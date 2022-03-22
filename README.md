@@ -15,6 +15,8 @@ Disclaimer: If you group infantry and vehicles together they will be moving very
 
 If you modify the script to run in debug mode you can visualise drawings on the F10 map to give you a better representation of what the script is doing
 
+![image](https://user-images.githubusercontent.com/2174111/158449017-c72f51a2-6512-42d4-bbbb-bf98867a7345.png)
+
 Purple circles correspond to the impact point and the search radius for the blast Black circles correspond to the area the group is fleeing to
 
 The green circle is the zone in wich the group will search for scenery to hide behind The blue circle is the zone the group has selected to hide behind (usualy a large structure, closest to that group)
