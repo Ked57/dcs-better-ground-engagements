@@ -64,6 +64,7 @@ local options = {
             ["AGM_122"] = 15,
             ["AGM_123"] = 274,
             ["AGM_130"] = 582,
+            ["AGM_114K"] = 11,
             ["AGM_119"] = 176,
             ["AGM_154C"] = 305,
             ["S-24A"] = 24,
@@ -516,6 +517,7 @@ end
 
 local function onWeaponEvent(event)
     if event.id == world.event.S_EVENT_SHOT then
+        log(event)
         if event.weapon then
             if not options.splashDamage.explTable[event.weapon:getTypeName()] then
                 log(event.weapon:getTypeName() .. " missing from BGE's Splash Damage script")
