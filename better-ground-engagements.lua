@@ -1,6 +1,6 @@
 local options = {
     refreshRate = 0.1,
-    debug = false,
+    debug = true,
     suppress = {
         groundUnitsFilterPrefixes = {""},
         suppressRadius = 100,
@@ -64,7 +64,6 @@ local options = {
             ["AGM_122"] = 15,
             ["AGM_123"] = 274,
             ["AGM_130"] = 582,
-            ["AGM_114K"] = 11,
             ["AGM_119"] = 176,
             ["AGM_154C"] = 305,
             ["S-24A"] = 24,
@@ -139,7 +138,7 @@ local GroupSet = SET_GROUP:New():FilterCategoryGround():FilterPrefixes(options.s
 --     MESSAGE:New(string.format("Group %s took cover", group:GetName()), 10):ToAll()
 -- end
 
-local function dump(o)
+function dump(o)
     if type(o) == 'table' then
         local s = '{ '
         for k, v in pairs(o) do
@@ -160,13 +159,13 @@ local function tableHasKey(table, key)
     return table[key] ~= nil
 end
 
-local function debug(msg)
+function debug(msg)
     if options.debug then
         MESSAGE:New("[BGE] -> " .. dump(msg), 5):ToAll()
     end
 end
 
-local function log(msg)
+function log(msg)
     BASE:I("[BGE] -> " .. dump(msg))
 end
 
@@ -241,6 +240,39 @@ function modelUnitDamage(units)
     end
 end
 
+convertPointToDCSPoint = function(point)
+    return {
+        x = point.x,
+        y = point.z,
+        z = point.y
+    }
+end
+
+hasLOS = function(impactPoint, targetPoint)
+    local pointWithCorrectedHeight = {
+        x = impactPoint.x,
+        y = impactPoint.y,
+        z = land.getHeight(impactPoint) + 1.8
+    }
+    local targetWithCorrectedHeight = {
+        x = targetPoint.x,
+        y = targetPoint.y,
+        z = land.getHeight(targetPoint) + 1.8
+    }
+    if options.debug then
+        debug("impactPoint " .. dump(pointWithCorrectedHeight))
+        debug("targetPoint " .. dump(targetWithCorrectedHeight))
+        ZONE_RADIUS:New("TP-" .. math.random(10000), targetWithCorrectedHeight, 1):DrawZone(-1, {1, 0, 0}, 1, {0, 0, 0},
+            0, 1, true)
+    end
+    if not land.isVisible(convertPointToDCSPoint(pointWithCorrectedHeight),
+        convertPointToDCSPoint(targetWithCorrectedHeight)) then
+        debug("Aborted blast because found object has no LOS with the blast wave origin point")
+        return false
+    end
+    return true
+end
+
 function blastWave(_point, _radius, weapon, power)
     local zone = ZONE_RADIUS:New("BW-" .. math.random(10000), _point, _radius)
     -- for Debug purposes
@@ -266,7 +298,15 @@ function blastWave(_point, _radius, weapon, power)
         end
         if options.splashDamage.waveExplosion then
             local obj = foundObject
-            local obj_location = obj:getPoint()
+            local tmpObjLocation = obj:GetPoint()
+            local obj_location = {
+                x = tmpObjLocation.x,
+                y = tmpObjLocation.z,
+                z = tmpObjLocation.y
+            }
+            if not hasLOS(_point, obj_location) then
+                return
+            end
             local distance = getDistance(_point, obj_location)
             local timing = distance / 500
             if obj:isExist() then
@@ -502,13 +542,24 @@ local function trackWeapons()
             else
                 impactPoint = ip
             end
-            if options.splashDamage.largerExplosions then
-                trigger.action.explosion(impactPoint, getWeaponExplosive(wpnData.name))
-                if options.debug then
-                    trigger.action.smoke(impactPoint, 0)
-                end
+            impactPoint.z = land.getHeight(impactPoint)
+            -- for Debug purposes
+            if options.debug then
+                ZONE_RADIUS:New("IP-" .. math.random(10000), impactPoint, 1):DrawZone(-1, {0, 0, 0}, 1, {0, 0, 0}, 1, 1,
+                    true)
             end
-            blastWave(impactPoint, options.splashDamage.blastSearchRadius, wpnData.wpn, getWeaponExplosive(wpnData.name))
+            --
+            local wpnExplosive = getWeaponExplosive(wpnData.name)
+            debug(string.format("%s: %s wpnExplosive > 0 = %s", wpnData.name, wpnExplosive, tostring(wpnExplosive > 0)))
+            if wpnExplosive > 0 then
+                if options.splashDamage.largerExplosions then
+                    trigger.action.explosion(impactPoint, wpnExplosive)
+                    if options.debug then
+                        trigger.action.smoke(impactPoint, 0)
+                    end
+                end
+                blastWave(impactPoint, wpnExplosive * 2, wpnData.wpn, wpnExplosive)
+            end
             suppressInRadius(impactPoint, options.suppress.suppressRadius, wpnData.dir)
             trackedWeapons[wpn_id_] = nil
         end
@@ -516,6 +567,8 @@ local function trackWeapons()
 end
 
 local function onWeaponEvent(event)
+    log(dump(event.weapon))
+    debug(dump(event.weapon))
     if event.id == world.event.S_EVENT_SHOT then
         if event.weapon then
             if not options.splashDamage.explTable[event.weapon:getTypeName()] then
@@ -536,8 +589,16 @@ local function onWeaponEvent(event)
 end
 
 GroupSet:HandleEvent(EVENTS.Shot)
+GroupSet:HandleEvent(EVENTS.ShootingStart)
+GroupSet:HandleEvent(EVENTS.ShootingEnd)
 
 function GroupSet:OnEventShot(Event)
+    onWeaponEvent(Event)
+end
+function GroupSet:OnEventShootingStart(Event)
+    onWeaponEvent(Event)
+end
+function GroupSet:S_EVENT_SHOOTING_END(Event)
     onWeaponEvent(Event)
 end
 
